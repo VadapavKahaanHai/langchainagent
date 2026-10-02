@@ -62,4 +62,4 @@ Docs: http://127.0.0.1:8000/docs
 - `app/static/`: web interface
 - `tests/`: offline tests
 
-Local single-process demo: sessions live in memory and reset on restart. No authentication or database. A report-download feature is planned (see `steps.md`).
+Local single-process demo: sessions live in memory and reset on restart. No authentication or database.
