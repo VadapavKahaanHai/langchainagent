@@ -1,21 +1,17 @@
 # Financial Filing Review Assistant
 
-
-A local portfolio project with one Gemini tool-calling agent and one tool, `review_filing(record_id)`. The tool uses a trained TF-IDF/logistic-regression classifier and returns short source excerpts. Gemini explains those results with excerpt references.
+A local portfolio project: one Gemini tool-calling agent with one tool, `review_filing(record_id)`. The tool uses a TF-IDF/logistic-regression classifier and returns short source excerpts, and Gemini explains the results with excerpt references.
 
 ## Setup
 
-Use Python 3.11 (the inspected development environment). From the project root in PowerShell:
+Python 3.11. From the project root (PowerShell):
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
-This Demo uses this dataset -
 
-
-
-## Train, test, and run
+## Train, test, run
 
 ```powershell
 .\.venv\Scripts\python.exe train_model.py
@@ -23,68 +19,47 @@ This Demo uses this dataset -
 .\.venv\Scripts\python.exe run.py
 ```
 
-Training writes `artifacts/filing_classifier.joblib` and evaluation files in `reports/`. Retraining overwrites those outputs. Use the same scikit-learn version when loading a saved model, or retrain after upgrading.
-
-The automated tests use small synthetic data and simulated model responses: no Google credentials or API requests are required. To check the real local dataset/model without Gemini:
-
-```powershell
-.\.venv\Scripts\python.exe -m app.tools.filing_review
-```
-
-Open http://127.0.0.1:8000/, select a filing, choose a question, and send it. Expand the tool results to see the call and excerpts. Selecting a different filing starts a fresh conversation. Gemini requests use your account's API quota. A report-download feature remains a planned step in `steps.md`.
+- Training writes `artifacts/filing_classifier.joblib` and evaluation files in `reports/`. Retrain if you upgrade scikit-learn.
+- Tests use synthetic data and simulated model responses, so no Google credentials are needed.
+- Check the real dataset/model without Gemini: `.\.venv\Scripts\python.exe -m app.tools.filing_review`
+- Open http://127.0.0.1:8000/, pick a filing, choose a question, and send. Gemini requests use your API quota.
 
 ## API
 
-Interactive documentation: http://127.0.0.1:8000/docs
+Docs: http://127.0.0.1:8000/docs
 
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /health` | Server status |
-| `GET /api/v1/agent/filings` | Record IDs only |
-| `GET /api/v1/agent/tools` | Review-tool schema |
+| `GET /api/v1/agent/filings` | Record IDs |
+| `GET /api/v1/agent/tools` | Tool schema |
 | `POST /api/v1/agent/tools/execute/review_filing` | Local review without Gemini |
 | `POST /api/v1/agent/query` | Gemini conversation and tool execution |
-| `GET /api/v1/agent/history/{session_id}` | Inspect session history |
-| `DELETE /api/v1/agent/history/{session_id}` | Remove a session |
-
-Example agent request:
+| `GET/DELETE /api/v1/agent/history/{session_id}` | Inspect or remove a session |
 
 ```json
 {
   "query": "Review filing_001 and explain the result with excerpt references.",
-  "provider": "gemini",
-  "agent_type": "tool_calling",
   "session_id": "review-demo"
 }
 ```
 
-`provider` and `agent_type` are optional and restricted to the values above. Model, temperature, and API-key overrides remain available. Alternate providers, ReAct/structured-chat modes, and the old calculator/Python/search/date tools have been removed.
-
 ## Dataset and limitations
 
-The inspected CSV contains 170 records with `Fillings` and `Fraud` columns, split equally between `yes` and `no`. There were no blank cells or exact duplicate texts. It is approximately 218 MB; the median text length is about 85,692 words. Seven records begin with `nan`, and source text is preserved rather than blindly cleaned.
+- 170 filings (`Fillings`, `Fraud` columns), balanced between `yes` and `no`, about 218 MB total.
+- Text includes MD&A and financial statements. Sources per the dataset creator: [SEC EDGAR](https://www.sec.gov/edgar/search-and-access), [JanosAudran/financial-reports-sec](https://huggingface.co/datasets/JanosAudran/financial-reports-sec), and [SEC litigation releases](https://www.sec.gov/litigation/litreleases).
+- Fraud labels were added by the creator; label rules, company grouping, and publication timing are unverified. A stratified split may include related companies.
+- Results reflect performance on this small dataset, not validated real-world fraud detection. A positive prediction is not proof of fraud, and a negative one does not rule it out.
+- Runs on CPU only.
 
-According to the creator's description supplied for this project, text includes MD&A and financial statements, with fraudulent cases relating to the year of fraud. The creator states that data was structured and labelled programmatically using Python from:
+## Project layout
 
-- [SEC EDGAR filings](https://www.sec.gov/edgar/search-and-access)
-- [JanosAudran financial-reports-sec](https://huggingface.co/datasets/JanosAudran/financial-reports-sec)
-- [SEC litigation releases](https://www.sec.gov/litigation/litreleases)
+- `train_model.py`: training and evaluation
+- `app/filing_service.py`: data/model loading, prediction, excerpts
+- `app/tools/filing_review.py`: the agent tool
+- `app/agent/`, `app/core/llm_factory.py`: agent execution and Gemini config
+- `app/api/`, `app/models/`: routes and schemas
+- `app/static/`: web interface
+- `tests/`: offline tests
 
-The Hugging Face source's original labels concern stock returns; the CSV's fraud labels were added separately. Exact label-verification rules, company grouping, and publication timing have not been independently verified. A stratified record split may contain related companies. Evaluation therefore measures performance on this small supplied dataset, not validated real-world fraud detection.
-
-The classifier predicts supplied labels; excerpts show context for associated terms and may contain boilerplate. A positive prediction is not proof of fraud, and a negative prediction does not certify absence of fraud. Training and inference run on the CPU; no GPU is required.
-
-## Files and local state
-
-- `train_model.py`: training, baseline comparison, evaluation, and model saving.
-- `app/filing_service.py`: cached data/model loading, prediction, and excerpts.
-- `app/tools/filing_review.py`: the agent tool and local smoke check.
-- `app/agent/`: tool-calling execution and process-local conversation history.
-- `app/core/llm_factory.py`: Gemini configuration.
-- `app/api/`, `app/models/`: API routes and schemas.
-- `app/static/`: HTML/CSS interface.
-- `tests/`: offline regression checks.
-
-`.gitignore` excludes secrets, virtual environments (including `langchain/`), caches, `Data/`, and `artifacts/`. Small `reports/` outputs remain available to commit for the portfolio. Ignoring a file does not remove it if it was already tracked.
-
-This is a local, single-process demo. Conversation history and cached data live in memory; restarting clears sessions. The browser and API use the same origin. There is no authentication, database, or background worker.
+Local single-process demo: sessions live in memory and reset on restart. No authentication or database. A report-download feature is planned (see `steps.md`).
