@@ -1,0 +1,56 @@
+{
+  "logistic_regression": {
+    "no": {
+      "precision": 1.0,
+      "recall": 0.7058823529411765,
+      "f1-score": 0.8275862068965517,
+      "support": 17.0
+    },
+    "yes": {
+      "precision": 0.7727272727272727,
+      "recall": 1.0,
+      "f1-score": 0.8717948717948718,
+      "support": 17.0
+    },
+    "accuracy": 0.8529411764705882,
+    "macro avg": {
+      "precision": 0.8863636363636364,
+      "recall": 0.8529411764705883,
+      "f1-score": 0.8496905393457117,
+      "support": 34.0
+    },
+    "weighted avg": {
+      "precision": 0.8863636363636364,
+      "recall": 0.8529411764705882,
+      "f1-score": 0.8496905393457117,
+      "support": 34.0
+    }
+  },
+  "majority_baseline": {
+    "no": {
+      "precision": 0.5,
+      "recall": 1.0,
+      "f1-score": 0.6666666666666666,
+      "support": 17.0
+    },
+    "yes": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 17.0
+    },
+    "accuracy": 0.5,
+    "macro avg": {
+      "precision": 0.25,
+      "recall": 0.5,
+      "f1-score": 0.3333333333333333,
+      "support": 34.0
+    },
+    "weighted avg": {
+      "precision": 0.25,
+      "recall": 0.5,
+      "f1-score": 0.3333333333333333,
+      "support": 34.0
+    }
+  }
+}

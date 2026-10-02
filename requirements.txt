@@ -1,0 +1,18 @@
+# Direct runtime dependencies, pinned to the inspected working environment.
+fastapi==0.142.2
+uvicorn[standard]==0.54.0
+pydantic==2.13.5
+pydantic-settings==2.15.0
+langchain-classic==1.0.8
+langchain-core==1.6.6
+langchain-google-genai==4.4.0
+
+# Local training and inference; keep sklearn aligned with saved model artifacts.
+pandas==3.0.6
+scikit-learn==1.9.1
+matplotlib==3.11.2
+joblib==1.6.0
+
+# Offline tests.
+pytest==9.1.1
+httpx==0.28.1

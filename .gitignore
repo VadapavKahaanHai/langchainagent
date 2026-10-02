@@ -1,0 +1,40 @@
+# Local environments
+/.venv/
+/venv/
+/env/
+/langchain/
+
+# Credentials (keep the shareable template)
+.env
+.env.*
+!.env.example
+
+# Python and test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Build output
+build/
+dist/
+*.egg-info/
+
+# Local dataset and generated model artifacts
+/Data/
+/artifacts/
+
+# Keep reports/ available for small portfolio evaluation results.
+
+# Local editor and OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.log
+.DS_Store
+Thumbs.db

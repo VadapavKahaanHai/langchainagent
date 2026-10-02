@@ -1,0 +1,261 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Financial Filing Review</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Financial Filing Review home">
+      <span>Financial Filing Review</span>
+    </a>
+    <div class="header-links">
+      <span id="server-status" class="status" role="status">Checking server...</span>
+      <a href="/docs" target="_blank" rel="noopener noreferrer">API docs &#8599;</a>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <aside class="sidebar" aria-label="Review settings">
+      <section class="panel">
+        <p class="eyebrow">Source document</p>
+        <h2>Select a filing</h2>
+        <label for="filing-select">Record ID</label>
+        <select id="filing-select" disabled aria-describedby="filing-status">
+          <option value="">Loading filings...</option>
+        </select>
+        <p id="filing-status" class="hint" role="status">Loading available records.</p>
+        <button id="retry-btn" class="secondary" type="button" hidden>Retry loading filings</button>
+        <p class="hint">Switching filings starts a new conversation.</p>
+      </section>
+
+      <section class="panel">
+        <p class="eyebrow">Review assistant</p>
+        <div class="provider"><h2>Google Gemini</h2><span class="tag">Tool calling</span></div>
+        <p class="hint">The assistant calls the local review tool, then explains its prediction and source excerpts.</p>
+        <details class="settings">
+          <summary>Model settings</summary>
+          <div class="settings-body">
+            <label for="model-input">Model override (optional)</label>
+            <input id="model-input" type="text" placeholder="Use server configuration">
+            <label for="apikey-input">API key override (optional)</label>
+            <input id="apikey-input" type="password" autocomplete="off" placeholder="Use server key">
+            <label for="temp-slider">Temperature <output id="temp-val" for="temp-slider">0.2</output></label>
+            <input id="temp-slider" type="range" min="0" max="1" step="0.05" value="0.2">
+          </div>
+        </details>
+      </section>
+
+      <section class="panel">
+        <p class="eyebrow">Available tools</p>
+        <div id="tools-list" class="tools-list">Checking tools...</div>
+      </section>
+      <p class="scope-note">Exploratory review only. A prediction does not establish fraud or certify a filing as fraud-free.</p>
+    </aside>
+
+    <main class="review-area">
+      <div class="review-heading">
+        <div><p class="eyebrow">Document workspace</p><h1 id="selected-title">Choose a filing to begin</h1></div>
+        <button id="reset-btn" class="secondary" type="button" disabled>New conversation</button>
+      </div>
+      <div class="quick-prompts" aria-label="Suggested questions">
+        <button type="button" data-prompt="Review this filing and explain the prediction with excerpt references." disabled>Review selected filing</button>
+        <button type="button" data-prompt="Explain the limitations of this filing review using the available evidence." disabled>Explain limitations</button>
+        <button type="button" data-prompt="What questions should a human reviewer investigate based on this filing's excerpts?" disabled>Questions for a reviewer</button>
+      </div>
+      <div id="chat-history" class="chat-history" role="log" aria-label="Filing review conversation" aria-live="polite" aria-relevant="additions">
+        <div class="empty-state"><span class="document-mark" aria-hidden="true">FI</span><h2>From filing to review</h2><p>Select a record, ask a question, and inspect the tool results behind the answer.</p></div>
+      </div>
+      <form id="query-form" class="composer">
+        <label for="query-input">Ask about the selected filing</label>
+        <div class="composer-row">
+          <input id="query-input" type="text" placeholder="Review this filing and cite the relevant excerpts..." required disabled autocomplete="off">
+          <button id="send-btn" class="primary" type="submit" disabled>Send question <span aria-hidden="true">&#8599;</span></button>
+        </div>
+        <p class="hint">Gemini requests use your account's API quota. Only short review excerpts are sent by the filing tool.</p>
+      </form>
+    </main>
+  </div>
+
+  <script>
+    const filingSelect = document.getElementById('filing-select');
+    const filingStatus = document.getElementById('filing-status');
+    const chat = document.getElementById('chat-history');
+    const queryInput = document.getElementById('query-input');
+    const sendBtn = document.getElementById('send-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    const retryBtn = document.getElementById('retry-btn');
+    const prompts = document.querySelectorAll('[data-prompt]');
+    const modelInput = document.getElementById('model-input');
+    const keyInput = document.getElementById('apikey-input');
+    const temperature = document.getElementById('temp-slider');
+    let sessionId = '';
+    let isSending = false;
+
+    function updateControls() {
+      const unavailable = isSending || !filingSelect.value;
+      filingSelect.disabled = unavailable;
+      queryInput.disabled = unavailable;
+      sendBtn.disabled = unavailable;
+      resetBtn.disabled = unavailable;
+      prompts.forEach(button => { button.disabled = unavailable; });
+      sendBtn.textContent = isSending ? 'Reviewing...' : 'Send question ↗';
+    }
+
+    function appendMessage(role, text, steps = [], seconds = null) {
+      const message = document.createElement('article');
+      message.className = `message ${role}`;
+      const heading = document.createElement('div');
+      heading.className = 'message-header';
+      heading.textContent = role === 'user' ? 'You' : role === 'error' ? 'Review unavailable' : 'Review assistant';
+      if (seconds != null) heading.textContent += ` · ${seconds}s`;
+      const content = document.createElement('div');
+      content.className = 'message-content';
+      content.textContent = text;
+      message.append(heading, content);
+      if (steps.length) {
+        const details = document.createElement('details');
+        details.className = 'tool-results';
+        const summary = document.createElement('summary');
+        summary.textContent = `View tool results (${steps.length})`;
+        details.append(summary);
+        steps.forEach(step => {
+          const card = document.createElement('div');
+          card.className = 'tool-result';
+          const title = document.createElement('h3');
+          title.textContent = step.tool;
+          const output = document.createElement('pre');
+          output.textContent = `Input: ${JSON.stringify(step.tool_input, null, 2)}\n\nOutput:\n${typeof step.tool_output === 'string' ? step.tool_output : JSON.stringify(step.tool_output, null, 2)}`;
+          card.append(title, output);
+          details.append(card);
+        });
+        message.append(details);
+      }
+      chat.append(message);
+      chat.scrollTop = chat.scrollHeight;
+      return message;
+    }
+
+    function startSession() {
+      if (isSending || !filingSelect.value) return;
+      sessionId = `${filingSelect.value}-${crypto.randomUUID()}`;
+      chat.replaceChildren();
+      queryInput.value = '';
+      document.getElementById('selected-title').textContent = filingSelect.value;
+      appendMessage('agent', `Ready to review Filing. Choose a suggested question or write your own. The tool's prediction is exploratory, not an audit finding.`);
+      updateControls();
+    }
+
+    async function loadFilings() {
+      retryBtn.hidden = true;
+      filingStatus.textContent = 'Loading available records...';
+      try {
+        const res = await fetch('/api/v1/agent/filings');
+        if (!res.ok) throw new Error(`Could not load filings (HTTP ${res.status}). Check the server and retry.`);
+        const ids = await res.json();
+        if (!Array.isArray(ids) || !ids.length || !ids.every(id => typeof id === 'string' && id.trim())) {
+          throw new Error('No valid filing records were returned. Check the dataset and retry.');
+        }
+        filingSelect.replaceChildren(...ids.map(id => new Option(id, id)));
+        filingStatus.textContent = `${ids.length} records available`;
+        startSession();
+      } catch (error) {
+        filingStatus.textContent = error.message;
+        retryBtn.hidden = false;
+        updateControls();
+      }
+    }
+
+    async function sendQuery(event) {
+      event.preventDefault();
+      if (isSending || !filingSelect.value || !queryInput.value.trim()) return;
+      const question = queryInput.value.trim();
+      const recordId = filingSelect.value;
+      appendMessage('user', question);
+      queryInput.value = '';
+      isSending = true;
+      updateControls();
+      const pending = appendMessage('agent', 'Reading the request and calling the review tool when needed...');
+      pending.classList.add('pending');
+      chat.setAttribute('aria-busy', 'true');
+      try {
+        const res = await fetch('/api/v1/agent/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: `Selected filing: ${recordId}\nUser question: ${question}`,
+            session_id: sessionId,
+            provider: 'gemini',
+            agent_type: 'tool_calling',
+            model: modelInput.value.trim() || null,
+            api_key: keyInput.value.trim() || null,
+            temperature: Number(temperature.value),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `Request failed (HTTP ${res.status}).`);
+        if (typeof data.response !== 'string' || !data.response.trim()) throw new Error('The server returned no answer. Please retry.');
+        // The existing backend can return an execution error with HTTP 200.
+        if (data.response.startsWith('An error occurred while executing the agent:')) throw new Error(data.response);
+        pending.remove();
+        appendMessage('agent', data.response, Array.isArray(data.steps) ? data.steps : [], data.execution_time_seconds);
+      } catch (error) {
+        pending.remove();
+        appendMessage('error', `${error.message}\nCheck the server or provider settings, then try again.`);
+        queryInput.value = question;
+      } finally {
+        isSending = false;
+        chat.setAttribute('aria-busy', 'false');
+        updateControls();
+        queryInput.focus();
+      }
+    }
+
+    async function loadTools() {
+      const container = document.getElementById('tools-list');
+      try {
+        const res = await fetch('/api/v1/agent/tools');
+        if (!res.ok) throw new Error('Tools unavailable. Check the server.');
+        const tools = await res.json();
+        container.replaceChildren();
+        tools.forEach(tool => {
+          const name = document.createElement('code');
+          name.textContent = tool.name;
+          container.append(name);
+        });
+        if (!tools.some(tool => tool.name === 'review_filing')) {
+          container.append(document.createTextNode('The filing-review tool is not registered.'));
+        }
+      } catch (error) { container.textContent = error.message; }
+    }
+
+    async function checkHealth() {
+      const status = document.getElementById('server-status');
+      try {
+        const res = await fetch('/health');
+        if (!res.ok || (await res.json()).status !== 'ok') throw new Error();
+        status.textContent = 'Server online';
+        status.classList.add('online');
+      } catch {
+        status.textContent = 'Server unavailable';
+        status.classList.add('offline');
+      }
+    }
+
+    document.getElementById('query-form').addEventListener('submit', sendQuery);
+    filingSelect.addEventListener('change', startSession);
+    resetBtn.addEventListener('click', startSession);
+    retryBtn.addEventListener('click', loadFilings);
+    temperature.addEventListener('input', () => { document.getElementById('temp-val').textContent = temperature.value; });
+    prompts.forEach(button => button.addEventListener('click', () => {
+      queryInput.value = button.dataset.prompt;
+      queryInput.focus();
+    }));
+    loadFilings();
+    loadTools();
+    checkHealth();
+  </script>
+</body>
+</html>
